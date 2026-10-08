@@ -40,6 +40,8 @@ Four small modules, each runnable on its own:
 | `index_build.py` | Embeds every chunk and saves the vectors to `index/` |
 | `search.py` | Embeds a question and returns the top-k most similar rules |
 | `answer.py` | Feeds those rules to a chat model constrained to cite them |
+| `eval_retrieval.py` | Scores retrieval: does each rule come back for a question about it? |
+| `eval_answers.py` | Scores answers: right rule cited, right facts stated, refuses when it should |
 
 Some decisions worth calling out:
 
@@ -91,14 +93,37 @@ python search.py "how does overwatch work?"    # retrieval only, no generation
 
 ## Current state and known limits
 
-Working: parsing, indexing, retrieval, and cited generation. These are real
-limitations, not unknowns:
+Working: parsing, indexing, retrieval, and cited generation, each measured.
 
-- **Generation is the weak link.** `qwen2.5:7b` retrieves well but reasons
-  poorly over rules text. Asked who fights first in an ongoing combat, it pulled
-  exactly the right chunks and then produced a circular non-answer. `CHAT_MODEL`
-  is a module constant so swapping generation to an API model is a one-line
-  change; embeddings stay local either way.
+```sh
+python eval_retrieval.py                 # one question per rule, built from its title
+python eval_answers.py [model] [k]       # 15 hand-checked questions, incl. 2 that must be refused
+```
+
+| Eval | Result |
+| --- | --- |
+| Retrieval (156 rules) | R@1 88.5%, R@3 97.4%, R@5 98.7%, MRR 0.928 |
+| Answers, `qwen2.5:7b`, k=5 | 12/15 (80.0%): 11/13 answers, 1/2 refusals |
+| Answers, `qwen2.5:14b`, k=5 | 13/15 (86.7%): 11/13 answers, 2/2 refusals |
+
+Answer scoring is deterministic — required rule number plus required facts,
+each with a list of accepted wordings — rather than a judge model, because the
+only local judge is the same model family being tested.
+
+What the numbers show:
+
+- **Retrieval is the bottleneck on player-style questions.** Both models fail
+  the same two answer cases, and both are retrieval misses: "can a unit shoot in
+  the turn it advanced?" ranks `10.05 ASSAULT SHOOTING` 7th, and "how far apart
+  can models in the same unit be?" ranks `03.03 COHERENCY` 11th. The retrieval
+  eval cannot see this, because its questions reuse the rule titles.
+- **More context makes it worse, not better.** Raising k to fix those misses
+  drops `qwen2.5:7b` from 80.0% to 66.7% at k=8 and k=12: it cites the wrong
+  rule, hedges, and turns a correct refusal into a confident fabrication.
+  Retrieval precision matters more than recall here.
+- **The bigger model's edge is refusing.** Asked about an Ork ability that is
+  not in the core rules, 7b invents an answer from an unrelated rule; 14b
+  refuses. `CHAT_MODEL` in `answer.py` is a one-line swap.
 - **Exact title matches do not always win.** Asked "what is a mortal wound",
   the embedder ranks `24.10 [DEVASTATING WOUNDS]` above `06.02 MORTAL WOUNDS`.
   All the top hits are topically about wounds, but the embedder has no notion
@@ -110,9 +135,8 @@ limitations, not unknowns:
 
 ## Roadmap
 
-- An eval harness: ~50 rules questions with verified answers, scored
-  automatically, so retrieval changes can be measured instead of eyeballed.
-- Hybrid retrieval to fix the exact-title-match problem.
+- Hybrid keyword + vector retrieval, to fix the player-phrasing misses and the
+  exact-title-match problem.
 - The faction packs and event companions, not just the core rules, which brings
   in the FAQ-overrides-core-text precedence problem.
 - Rewriting the similarity hot path (`vectors @ query`) as a C++ extension via
