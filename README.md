@@ -127,16 +127,23 @@ What the numbers show:
 - **Exact title matches do not always win.** Asked "what is a mortal wound",
   the embedder ranks `24.10 [DEVASTATING WOUNDS]` above `06.02 MORTAL WOUNDS`.
   All the top hits are topically about wounds, but the embedder has no notion
-  that a title match should dominate. This is the motivating case for hybrid
-  keyword + vector retrieval.
+  that a title match should dominate. Keyword search ranks it 2nd as well.
+- **Hybrid keyword + vector retrieval was tried and did not help.** `search.py`
+  implements BM25 and reciprocal rank fusion (`MODE = "hybrid"`), but it scores
+  R@1 83.3% against vector's 88.5%, and ties on answers at 80.0%. It does pull
+  `10.05` into the top 5 for the advance question, where 7b then misreads it.
+  It pushes `03.03` from 11th to 19th for the coherency question: "how far
+  apart" shares no rare words with "within 2 inches", so there is nothing for
+  keyword matching to find. The remaining misses are a vocabulary gap between
+  player questions and rules text.
 - **The last chunk swallows the appendix**, because nothing after `24.38` looks
   like a header.
 - **Page furniture leaks** into chunk bodies — page numbers and banner text.
 
 ## Roadmap
 
-- Hybrid keyword + vector retrieval, to fix the player-phrasing misses and the
-  exact-title-match problem.
+- Query rewriting: have the model restate a player's question in rulebook
+  language before embedding it, to close the vocabulary gap.
 - The faction packs and event companions, not just the core rules, which brings
   in the FAQ-overrides-core-text precedence problem.
 - Rewriting the similarity hot path (`vectors @ query`) as a C++ extension via

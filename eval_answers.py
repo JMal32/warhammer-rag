@@ -21,6 +21,7 @@ import re
 import sys
 
 import answer
+import search
 
 # How many chunks to retrieve per question. Settable from the command line so
 # the effect of a wider context can be measured rather than guessed at.
@@ -170,7 +171,9 @@ def main():
     if len(sys.argv) > 1:
         answer.CHAT_MODEL = sys.argv[1]
     k = int(sys.argv[2]) if len(sys.argv) > 2 else K
-    print(f"scoring answers from {answer.CHAT_MODEL} at k={k}\n")
+    if len(sys.argv) > 3:
+        search.MODE = sys.argv[3]
+    print(f"scoring answers from {answer.CHAT_MODEL} at k={k}, {search.MODE} retrieval\n")
 
     passed = 0
     for case in CASES:

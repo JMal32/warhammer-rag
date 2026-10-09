@@ -12,7 +12,9 @@ good. The point is to have a number that moves when retrieval changes.
 
 import json
 import pathlib
+import sys
 
+import search as search_module
 from search import search
 
 INDEX_DIR = pathlib.Path("index")
@@ -83,7 +85,9 @@ def mrr(ranks):
 
 
 def main():
-    print(f"evaluating retrieval at k={K}\n")
+    if len(sys.argv) > 1:
+        search_module.MODE = sys.argv[1]
+    print(f"evaluating {search_module.MODE} retrieval at k={K}\n")
     ranks, misses = evaluate()
 
     print(f"\ncases:      {len(ranks)}")
