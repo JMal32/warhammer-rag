@@ -96,9 +96,12 @@ python search.py "how does overwatch work?"    # retrieval only, no generation
 Working: parsing, indexing, retrieval, and cited generation, each measured.
 
 ```sh
-python eval_retrieval.py                 # one question per rule, built from its title
-python eval_answers.py [model] [k]       # 15 hand-checked questions, incl. 2 that must be refused
+python eval_retrieval.py [mode] [rewrite]            # one question per rule, built from its title
+python eval_answers.py [model] [k] [mode] [rewrite]  # 15 hand-checked questions, incl. 2 that must be refused
 ```
+
+`mode` is `vector` (default), `keyword` or `hybrid`; the literal word `rewrite`
+turns on query rewriting. The table below is the default configuration.
 
 | Eval | Result |
 | --- | --- |
@@ -136,14 +139,32 @@ What the numbers show:
   apart" shares no rare words with "within 2 inches", so there is nothing for
   keyword matching to find. The remaining misses are a vocabulary gap between
   player questions and rules text.
+- **Query rewriting fixes retrieval, and the answers do not improve.** With
+  `REWRITE = True` in `search.py`, `qwen2.5:7b` restates the question in
+  rulebook language before it is embedded. That closes the vocabulary gap:
+  `10.05` goes from 7th to 1st and `03.03` from 11th to 3rd, so all 13 answer
+  cases now have their rule in the top 5. But the answer eval does not move —
+  7b stays at 80.0% and 14b at 86.7% — because the models now fail those same
+  questions with the right rule in front of them: 14b reads `10.05` and still
+  says an advancing unit cannot shoot, and gives the 9" and 5" coherency
+  distances while leaving out the 2". Rewriting also costs a chat call per
+  question and hurts the title-based retrieval eval (R@1 88.5% → 72.4%, R@5
+  98.7% → 92.3%), since it discards the title words the question already had.
+  It stays off by default. The bottleneck has moved from retrieval to
+  generation.
+- **The rewrites are wrong, and that is fine for search only.** The coherency
+  question is rewritten as "Models in the same unit must be within 1 inch of
+  each other": the right vocabulary, the wrong rule. So the rewrite is used for
+  retrieval and never shown to the answer model, which still gets the original
+  question.
 - **The last chunk swallows the appendix**, because nothing after `24.38` looks
   like a header.
 - **Page furniture leaks** into chunk bodies — page numbers and banner text.
 
 ## Roadmap
 
-- Query rewriting: have the model restate a player's question in rulebook
-  language before embedding it, to close the vocabulary gap.
+- Generation: both models misread rules they were given (`10.05`, `03.03`), so
+  the next work is on the answer prompt rather than on retrieval.
 - The faction packs and event companions, not just the core rules, which brings
   in the FAQ-overrides-core-text precedence problem.
 - Rewriting the similarity hot path (`vectors @ query`) as a C++ extension via

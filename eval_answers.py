@@ -173,7 +173,10 @@ def main():
     k = int(sys.argv[2]) if len(sys.argv) > 2 else K
     if len(sys.argv) > 3:
         search.MODE = sys.argv[3]
-    print(f"scoring answers from {answer.CHAT_MODEL} at k={k}, {search.MODE} retrieval\n")
+    if len(sys.argv) > 4:
+        search.REWRITE = sys.argv[4] == "rewrite"
+    rewriting = " + query rewriting" if search.REWRITE else ""
+    print(f"scoring answers from {answer.CHAT_MODEL} at k={k}, {search.MODE} retrieval{rewriting}\n")
 
     passed = 0
     for case in CASES:

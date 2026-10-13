@@ -44,6 +44,29 @@ B = 0.75
 # curve so rank 1 vs rank 2 matters less than "in both top tens" vs "in one".
 RRF_K = 60
 
+# Restate the question in rulebook language before searching. Read at call time,
+# like MODE. A player asks "how far apart can models be?"; the rule says "within
+# 2 inches horizontally". Rewriting moves the question onto the rules' side of
+# that vocabulary gap.
+#
+# Off by default because it measured as a wash (k=5, vector):
+#   answer eval:        7b 80.0% -> 80.0%, 14b 86.7% -> 86.7%
+#   retrieval eval R@1: 88.5% -> 72.4%
+# It does fix retrieval for the player-phrased questions (10.05 rank 7 -> 1,
+# 03.03 rank 11 -> 3), but the models then misread the rules they are given,
+# and the title-based retrieval eval loses the title words it relied on.
+REWRITE = False
+
+# Fixed here rather than borrowed from answer.CHAT_MODEL, so that swapping the
+# answer model in an eval does not silently change what gets retrieved.
+REWRITE_MODEL = "qwen2.5:7b"
+
+REWRITE_PROMPT = (
+    "Rewrite the player's question the way a Warhammer 40,000 rulebook would "
+    "phrase it, using official rules terminology. Reply with one sentence only, "
+    "no explanation."
+)
+
 
 @functools.cache
 def load_index():
@@ -59,6 +82,29 @@ def embed_query(question):
     response = ollama.embed(model=EMBED_MODEL, input=f"search_query: {question}")
     vector = np.array(response["embeddings"][0], dtype=np.float32)
     return vector / np.linalg.norm(vector)
+
+
+@functools.cache
+def rewrite_query(question):
+    """The question restated in the rules' own vocabulary, for searching only.
+
+    The rewrite is NOT trustworthy as a statement of the rules: the model makes
+    up the content ("within 1 inch" for a rule that says 2). That is fine for
+    retrieval, which only needs the right words, but it means the rewrite must
+    never reach the answer model - answer() keeps passing the original question.
+
+    Cached because the evals ask the same questions repeatedly and each rewrite
+    costs a chat call, far more than the embedding it feeds.
+    """
+    response = ollama.chat(
+        model=REWRITE_MODEL,
+        messages=[
+            {"role": "system", "content": REWRITE_PROMPT},
+            {"role": "user", "content": question},
+        ],
+        options={"temperature": 0},
+    )
+    return " ".join(response["message"]["content"].split())
 
 
 def stem(word):
@@ -157,7 +203,8 @@ SCORERS = {"vector": vector_scores, "keyword": keyword_scores, "hybrid": hybrid_
 
 def search(question, k=5):
     _, chunks = load_index()
-    scores = SCORERS[MODE](question)
+    query = rewrite_query(question) if REWRITE else question
+    scores = SCORERS[MODE](query)
 
     # argsort is ascending, so take the tail and flip it to get the best first
     top = np.argsort(scores)[-k:][::-1]
@@ -166,7 +213,10 @@ def search(question, k=5):
 
 if __name__ == "__main__":
     question = " ".join(sys.argv[1:]) or "how do mortal wounds work?"
-    print(f"Q: {question}  [{MODE}]\n")
+    print(f"Q: {question}  [{MODE}]")
+    if REWRITE:
+        print(f"   searched as: {rewrite_query(question)}")
+    print()
     for score, chunk in search(question):
         preview = " ".join(chunk["text"].split())[:150]
         print(f"{score:.3f}  {chunk['number']}  {chunk['title']}  (p{chunk['page']})")

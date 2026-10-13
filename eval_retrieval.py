@@ -87,7 +87,10 @@ def mrr(ranks):
 def main():
     if len(sys.argv) > 1:
         search_module.MODE = sys.argv[1]
-    print(f"evaluating {search_module.MODE} retrieval at k={K}\n")
+    if len(sys.argv) > 2:
+        search_module.REWRITE = sys.argv[2] == "rewrite"
+    rewriting = " + query rewriting" if search_module.REWRITE else ""
+    print(f"evaluating {search_module.MODE} retrieval{rewriting} at k={K}\n")
     ranks, misses = evaluate()
 
     print(f"\ncases:      {len(ranks)}")
